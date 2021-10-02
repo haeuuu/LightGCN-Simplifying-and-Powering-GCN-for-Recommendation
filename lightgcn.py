@@ -4,6 +4,7 @@ from torch import nn
 import dgl
 from dgl import function as fn
 
+from utils import degree_noramlization
 
 class LightGraphConv(nn.Module):
     def __init__(self,
@@ -76,6 +77,7 @@ class LightGCNLayer(nn.Module):
             dropout rate (feature dropout)
         """
         conv = {}
+        self.edge_types = edge_types
         for edge in edge_types:
             user_to_item_key = f'{edge}'
             item_to_user_key = f'reverse-{edge}'
@@ -88,6 +90,7 @@ class LightGCNLayer(nn.Module):
 
         self.conv = dgl.nn.pytorch.HeteroGraphConv(conv, aggregate = 'sum')
         self.feature_dropout = nn.Dropout(drop_out)
+        self.normed_adj_u, self.normed_adj_v = None, None
 
     def forward(self, graph, ufeats, ifeats, ukey = 'user', ikey = 'item'):
         """
@@ -116,11 +119,18 @@ class LightGCNLayer(nn.Module):
             ikey : ifeats
             }
 
+        if self.normed_adj_u is None:
+            self.normed_adj_u, self.normed_adj_v = \
+                degree_noramlization(graph, self.edge_types, ukey, ikey)
+
         out = self.conv(graph, feats)
 
         ufeats, ifeats = out[ukey], out[ikey]
         ufeats = self.feature_dropout(ufeats)
         ifeats = self.feature_dropout(ifeats)
+
+        ufeats = torch.sparse.mm(self.normed_adj_u, ifeats)
+        ifeats = torch.sparse.mm(self.normed_adj_v, ufeats)
 
         return ufeats, ifeats
 
