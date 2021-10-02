@@ -33,7 +33,7 @@ class LightGCN(nn.Module):
                                         n_basis = n_basis)
 
     def encode(self, graph, ufeats, ifeats, ukey, ikey):
-        u_hidden, i_hidden = torch.zeros_like(ufeats), torch.zeros_like(ifeats)
+        u_hidden, i_hidden = ufeats, ifeats
         for encoder in self.encoders:
             ufeats, ifeats = encoder(graph, ufeats, ifeats, ukey, ikey)
             u_hidden += ufeats
