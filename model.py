@@ -11,7 +11,8 @@ class LightGCN(nn.Module):
                 edge_types,
                 drop_out,
                 feats_dim,
-                n_basis = None):
+                n_basis = None,
+                learnable_weight = False):
         super().__init__()
         """LightGCN: Simplifying and Powering Graph Convolution Network for Recommendation
         paper : https://arxiv.org/pdf/2002.02126.pdf
@@ -20,12 +21,21 @@ class LightGCN(nn.Module):
             number of GCMC layers
         edge_types : list
             all edge types
+        drop_out : float
+            dropout rate (neighbors)
+        learnable_weight : boolean
+            whether to learn weights for embedding aggregation
+            if False, use 1/n_layers
         """
         self.n_layers = n_layers
         self.encoders = nn.ModuleList()
         for _ in range(n_layers):
             self.encoders.append(LightGCNLayer(edge_types = edge_types,
                                                 drop_out = drop_out))
+        if learnable_weight:
+            self.weights = nn.Parameter(torch.ones(n_layers)/self.n_layers)
+        else:
+            self.weights = torch.ones(n_layers)/self.n_layers
             
         # self.decoder = DotDecoder()
         self.decoder = BilinearDecoder(feats_dim = feats_dim,
@@ -34,12 +44,12 @@ class LightGCN(nn.Module):
 
     def encode(self, graph, ufeats, ifeats, ukey, ikey):
         u_hidden, i_hidden = ufeats, ifeats
-        for encoder in self.encoders:
+        for w, encoder in zip(self.weights, self.encoders):
             ufeats, ifeats = encoder(graph, ufeats, ifeats, ukey, ikey)
-            u_hidden += ufeats
-            i_hidden += ifeats
+            u_hidden += w * ufeats
+            i_hidden += w * ifeats
 
-        return ufeats / self.n_layers, ifeats / self.n_layers
+        return ufeats, ifeats
 
     def decode(self, pos_graph, neg_graph, ufeats, ifeats, ukey, ikey):
         pred_pos = self.decoder(pos_graph, ufeats, ifeats, ukey, ikey)
